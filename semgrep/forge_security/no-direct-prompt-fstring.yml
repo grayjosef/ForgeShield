@@ -1,0 +1,51 @@
+# ForgeShield D7 / CC-10 -- block direct f-string prompt construction.
+#
+# Practical first version: catch the common shapes of "build a prompt
+# string with an embedded variable" so reviewers are forced to route
+# external content through PromptBuilder.add_external_content().
+#
+# Run with:
+#     semgrep --config semgrep/forge_security/no-direct-prompt-fstring.yml src
+#
+# Notes:
+# * This rule is intentionally conservative; false positives are
+#   preferred over false negatives at the scratch-gate stage.
+# * It does NOT replace human review. It is a tripwire.
+
+rules:
+  - id: forge-no-direct-prompt-fstring-assignment
+    severity: ERROR
+    languages: [python]
+    message: >-
+      Do not embed variables into prompt/message strings via f-strings.
+      Build messages with
+      forge_security.ai_security.prompt_builder.PromptBuilder; the only
+      sanctioned path for external bytes is add_external_content(),
+      which routes through wrap_untrusted_content(). ForgeShield D7.
+    metadata:
+      category: security
+      forgeshield: D7
+      cwe: "CWE-77"
+    patterns:
+      - pattern-either:
+          - pattern: $VAR = f"...{$X}..."
+          - pattern: $VAR += f"...{$X}..."
+      - metavariable-regex:
+          metavariable: $VAR
+          regex: "(?i)(prompt|message|messages|system_prompt|user_prompt|llm_input)"
+
+  - id: forge-no-direct-prompt-fstring-in-messages-list
+    severity: ERROR
+    languages: [python]
+    message: >-
+      Do not embed variables into a chat 'messages' list via f-strings.
+      Build the message list with PromptBuilder().build() instead.
+      ForgeShield D7.
+    metadata:
+      category: security
+      forgeshield: D7
+    pattern-either:
+      - pattern: |
+          {"role": $R, "content": f"...{$X}..."}
+      - pattern: |
+          {"role": $R, "content": f'...{$X}...'}

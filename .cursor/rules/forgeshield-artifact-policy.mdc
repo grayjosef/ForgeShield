@@ -1,0 +1,47 @@
+---
+description: ForgeShield CC-14 review artifact policy (LEGACY_UNSIGNED / SIGNED_V1).
+alwaysApply: true
+---
+
+# ForgeShield review artifact policy (CC-14)
+
+ForgeShield recognizes exactly two review artifact tiers. These are
+defined in code at
+`src/forge_security/artifact_integrity/review_artifacts.py` and
+enforced at the activation boundary by
+`src/forge_security/lifecycle/activation_guard.py`. **Do not** invent
+a third tier, and do not paper over a violation by widening
+`POLICIES`.
+
+## Tiers
+
+- **`LEGACY_UNSIGNED`** -- pre-FS contract pipeline output. No
+  detached signature, no signed manifest. Treat as best-effort
+  provenance only.
+- **`SIGNED_V1`** -- post-FS-12 output. Detached signature over a
+  manifest that pins the artifact bytes by hash. Treat as the
+  baseline going forward.
+
+## Per-product rules (current)
+
+| Product       | Accepts                       | Notes                                                                                  |
+|---------------|-------------------------------|----------------------------------------------------------------------------------------|
+| contract-iq   | LEGACY_UNSIGNED, SIGNED_V1    | ContractForge pilot only. Tighten when FS-1 lands.                                     |
+| nativeforge   | LEGACY_UNSIGNED, SIGNED_V1    | **NativeForge FS-12 must drop LEGACY_UNSIGNED** and tighten the activation guard.      |
+| docketforge   | SIGNED_V1 only                | **No exceptions, ever.** SIGNED_V1 required at every artifact position from day one. |
+| grantforge    | SIGNED_V1 only                | Default for new products until they earn a pilot exception.                            |
+
+## Rules for agents and contributors
+
+1. **Never** add `LEGACY_UNSIGNED` to DocketForge, GrantForge, or any
+   future product. The defensive check in `is_tier_accepted` will
+   reject it for DocketForge regardless, but the policy table must
+   match.
+2. When you see `LEGACY_UNSIGNED` referenced outside ContractForge or
+   pre-FS-12 NativeForge code paths, treat it as a bug.
+3. The activation guard (`activation_guard`) must remain the only
+   place product code asks "may I activate?". Do not bypass it by
+   re-implementing tier checks elsewhere.
+4. Tests in `tests/security/test_review_artifacts_policy.py` pin the
+   current policy. Changes to the policy table require updating
+   those tests in the same change.
