@@ -10,7 +10,10 @@ from forge_security.artifact_integrity.review_artifacts import (
     enforce_tier,
     is_tier_accepted,
 )
-from forge_security.lifecycle.activation_guard import activation_guard
+from forge_security.lifecycle.activation_guard import (
+    ActivationDecision,
+    activation_guard,
+)
 
 
 def test_tier_constants_match_spec():
@@ -26,8 +29,11 @@ def test_contract_iq_pilot_accepts_legacy_unsigned():
 
 
 def test_nativeforge_currently_accepts_legacy_unsigned_pending_fs12():
-    # FS-12 will tighten this to SIGNED_V1 only. This test pins TODAY'S
-    # behavior so the FS-12 PR shows up as a real, visible change.
+    """FS-12 precursor only — not an FS-1 ContractForge dependency.
+
+    NativeForge may still list LEGACY_UNSIGNED until FS-12; FS-1 design and
+    activation_guard matrix tests intentionally do not rely on this path.
+    """
     assert is_tier_accepted(Product.NATIVEFORGE, LEGACY_UNSIGNED)
     assert is_tier_accepted(Product.NATIVEFORGE, SIGNED_V1)
 
@@ -51,26 +57,77 @@ def test_grantforge_signed_v1_only():
     assert not is_tier_accepted(Product.GRANTFORGE, LEGACY_UNSIGNED)
 
 
-def test_activation_guard_blocks_docketforge_legacy_unsigned():
-    decision = activation_guard(Product.DOCKETFORGE, LEGACY_UNSIGNED)
-    assert decision.activated is False
-    assert "LEGACY_UNSIGNED" in decision.reason
-    assert decision.product is Product.DOCKETFORGE
+@pytest.mark.parametrize(
+    ("product", "tier", "expect_activated"),
+    [
+        pytest.param(
+            Product.CONTRACT_IQ,
+            LEGACY_UNSIGNED,
+            True,
+            id="contract_iq_legacy_unsigned_allows",
+        ),
+        pytest.param(
+            Product.CONTRACT_IQ,
+            SIGNED_V1,
+            True,
+            id="contract_iq_signed_v1_allows",
+        ),
+        pytest.param(
+            Product.DOCKETFORGE,
+            LEGACY_UNSIGNED,
+            False,
+            id="docketforge_legacy_unsigned_denies",
+        ),
+        pytest.param(
+            Product.DOCKETFORGE,
+            SIGNED_V1,
+            True,
+            id="docketforge_signed_v1_allows",
+        ),
+        pytest.param(
+            Product.GRANTFORGE,
+            LEGACY_UNSIGNED,
+            False,
+            id="grantforge_legacy_unsigned_denies",
+        ),
+        pytest.param(
+            Product.GRANTFORGE,
+            SIGNED_V1,
+            True,
+            id="grantforge_signed_v1_allows",
+        ),
+    ],
+)
+def test_activation_guard_fs1_product_tier_matrix(
+    product: Product, tier: ReviewArtifactTier, expect_activated: bool
+) -> None:
+    """Product × tier matrix for FS-1 activation_guard (Contract IQ, DocketForge, GrantForge)."""
+    decision = activation_guard(product, tier)
+    assert decision.product is product
+    assert decision.tier is tier
+    assert decision.activated is expect_activated
+    assert isinstance(decision.reason, str)
+    assert decision.reason.strip() != ""
+    if expect_activated:
+        assert product.value in decision.reason
+        assert tier.value in decision.reason
+    else:
+        assert (tier.value in decision.reason) or (product.value in decision.reason)
 
 
-def test_activation_guard_allows_docketforge_signed_v1():
-    decision = activation_guard(Product.DOCKETFORGE, SIGNED_V1)
-    assert decision.activated is True
-    assert "SIGNED_V1" in decision.reason
-
-
-def test_activation_guard_allows_contract_iq_legacy_unsigned():
-    decision = activation_guard(Product.CONTRACT_IQ, LEGACY_UNSIGNED)
-    assert decision.activated is True
-
-
-def test_activation_guard_never_raises():
-    # Even for a (product, tier) combo that should be rejected, the
-    # guard returns a decision instead of raising.
-    decision = activation_guard(Product.DOCKETFORGE, LEGACY_UNSIGNED)
-    assert isinstance(decision.reason, str) and decision.reason
+def test_activation_guard_never_raises_for_fs1_matrix_pairs() -> None:
+    """activation_guard must not raise for the FS-1 matrix (six product × tier pairs)."""
+    pairs = [
+        (Product.CONTRACT_IQ, LEGACY_UNSIGNED),
+        (Product.CONTRACT_IQ, SIGNED_V1),
+        (Product.DOCKETFORGE, LEGACY_UNSIGNED),
+        (Product.DOCKETFORGE, SIGNED_V1),
+        (Product.GRANTFORGE, LEGACY_UNSIGNED),
+        (Product.GRANTFORGE, SIGNED_V1),
+    ]
+    for product, tier in pairs:
+        decision = activation_guard(product, tier)
+        assert isinstance(decision, ActivationDecision)
+        assert decision.product is product
+        assert decision.tier is tier
+        assert isinstance(decision.reason, str) and decision.reason.strip() != ""
