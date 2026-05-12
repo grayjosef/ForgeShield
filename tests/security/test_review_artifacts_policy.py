@@ -16,6 +16,23 @@ from forge_security.lifecycle.activation_guard import (
 )
 
 
+def _assert_rejected_activation_reason_quality(
+    decision: ActivationDecision,
+    *,
+    expected_product: Product,
+    expected_tier: ReviewArtifactTier,
+) -> None:
+    """FS-1.3: rejected decisions must be auditable (tier and product in reason)."""
+    assert decision.product is expected_product
+    assert decision.tier is expected_tier
+    assert decision.activated is False
+    reason = decision.reason
+    assert isinstance(reason, str)
+    assert reason.strip() != ""
+    assert expected_tier.value in reason
+    assert expected_product.value in reason
+
+
 def test_tier_constants_match_spec():
     assert ReviewArtifactTier.LEGACY_UNSIGNED.value == "LEGACY_UNSIGNED"
     assert ReviewArtifactTier.SIGNED_V1.value == "SIGNED_V1"
@@ -108,11 +125,12 @@ def test_activation_guard_fs1_product_tier_matrix(
     assert decision.activated is expect_activated
     assert isinstance(decision.reason, str)
     assert decision.reason.strip() != ""
-    if expect_activated:
-        assert product.value in decision.reason
-        assert tier.value in decision.reason
-    else:
-        assert (tier.value in decision.reason) or (product.value in decision.reason)
+    if not expect_activated:
+        _assert_rejected_activation_reason_quality(
+            decision,
+            expected_product=product,
+            expected_tier=tier,
+        )
 
 
 def test_activation_guard_never_raises_for_fs1_matrix_pairs() -> None:
