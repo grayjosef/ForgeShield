@@ -104,27 +104,16 @@ or deployment configs.
 
 ## 5. CI/check commands
 
+**Authoritative command reference (FS-1.5):** all copy-pastable local and
+CI-equivalent commands (canonical JG path, venv, `PYTHONPATH`, pytest,
+semgrep validate/scan, pre-commit checklist, human gate, and “clean check”
+definition) live in
+[`docs/architecture/FS-1_CI_CHECK_COMMANDS.md`](FS-1_CI_CHECK_COMMANDS.md).
+Use that document as the single source of truth for invocations; this section
+summarizes governance expectations only.
+
 Local and CI should run the same checks (exact tooling versions per org
 standard).
-
-**Python tests**
-
-```bash
-cd /path/to/forgeshield
-python -m venv .venv && . .venv/bin/activate
-pip install -e ".[dev]"
-export PYTHONPATH=src
-python -m pytest -v
-```
-
-(`tests/conftest.py` adds `src/` to `sys.path`; `PYTHONPATH=src` matches the
-documented manual invocation.)
-
-**Semgrep (D7 / prompt f-string tripwire)**
-
-```bash
-semgrep --config semgrep/forge_security/no-direct-prompt-fstring.yml src
-```
 
 **Policy / governance**
 
