@@ -1,6 +1,9 @@
+from typing import Dict
+
 import pytest
 
 from forge_security.artifact_integrity.review_artifacts import (
+    ArtifactPolicy,
     ArtifactPolicyViolation,
     LEGACY_UNSIGNED,
     POLICIES,
@@ -14,6 +17,43 @@ from forge_security.lifecycle.activation_guard import (
     ActivationDecision,
     activation_guard,
 )
+
+# FS-1.6: human gate for intentional POLICIES edits — if production POLICIES
+# legitimately changes, update _EXPECTED_POLICIES_CANONICAL below only after
+# explicit human review (security + product); never widen the snapshot to
+# silence CI without that review.
+
+_EXPECTED_POLICIES_CANONICAL = """\
+product=contract-iq
+accepted_tiers=LEGACY_UNSIGNED,SIGNED_V1
+note=ContractForge pilot may accept LEGACY_UNSIGNED until FS-1 lands.
+---
+product=docketforge
+accepted_tiers=SIGNED_V1
+note=DocketForge requires SIGNED_V1 at every artifact position from day one. No exceptions.
+---
+product=grantforge
+accepted_tiers=SIGNED_V1
+note=GrantForge has not started; default to SIGNED_V1 only.
+---
+product=nativeforge
+accepted_tiers=LEGACY_UNSIGNED,SIGNED_V1
+note=NativeForge accepts LEGACY_UNSIGNED only until FS-12 upgrades the activation guard.
+---
+"""
+
+
+def _canonical_policies_snapshot(policies: Dict[Product, ArtifactPolicy]) -> str:
+    """Deterministic serialization: sorted products, sorted tier names, exact notes."""
+    blocks: list[str] = []
+    for product in sorted(policies.keys(), key=lambda p: p.value):
+        pol = policies[product]
+        tiers = ",".join(sorted(t.value for t in pol.accepted_tiers))
+        blocks.append(f"product={pol.product.value}")
+        blocks.append(f"accepted_tiers={tiers}")
+        blocks.append(f"note={pol.note}")
+        blocks.append("---")
+    return "\n".join(blocks) + "\n"
 
 
 def _assert_rejected_activation_reason_quality(
@@ -149,3 +189,13 @@ def test_activation_guard_never_raises_for_fs1_matrix_pairs() -> None:
         assert decision.product is product
         assert decision.tier is tier
         assert isinstance(decision.reason, str) and decision.reason.strip() != ""
+
+
+def test_policies_canonical_snapshot_fs16() -> None:
+    """FS-1.6: pin POLICIES shape so accidental widening breaks CI loudly.
+
+    Pins: CONTRACT_IQ allows LEGACY_UNSIGNED + SIGNED_V1; DOCKETFORGE and
+    GRANTFORGE SIGNED_V1 only; NativeForge temporary LEGACY_UNSIGNED is
+    explicit FS-12-precursor wording in the note when present.
+    """
+    assert _canonical_policies_snapshot(POLICIES) == _EXPECTED_POLICIES_CANONICAL
